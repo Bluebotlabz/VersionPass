@@ -1,12 +1,17 @@
 package org.cloudburstmc.proxypass.network.bedrock.session;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.JsonNodeType;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.log4j.Log4j2;
+import java.security.KeyPair;
+import java.security.PublicKey;
+import java.security.interfaces.ECPublicKey;
+import java.util.List;
+import java.util.Map;
+
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
+import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
+import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
 import org.cloudburstmc.protocol.bedrock.packet.ClientCacheStatusPacket;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkSettingsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayStatusPacket;
@@ -22,11 +27,11 @@ import org.jose4j.json.internal.json_simple.JSONObject;
 import org.jose4j.jws.JsonWebSignature;
 import org.jose4j.lang.JoseException;
 
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.security.interfaces.ECPublicKey;
-import java.util.List;
-import java.util.Map;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeType;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.log4j.Log4j2;
 
 @Log4j2
 @RequiredArgsConstructor
@@ -54,6 +59,18 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
     @Override
     public PacketSignal handle(ClientCacheStatusPacket packet) {
         packet.setSupported(false); // HEHE BANDWIDTH GO BRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(InventoryTransactionPacket packet) {
+        BlockDefinition blockDefinition = packet.getBlockDefinition();
+
+        if (blockDefinition != null) {
+            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsClientToServer().getOrDefault(blockDefinition.getRuntimeId(), 0), null);
+            packet.setBlockDefinition(newBlockDefinition);
+        }
+
         return PacketSignal.UNHANDLED;
     }
 

@@ -14,7 +14,9 @@ import org.cloudburstmc.nbt.util.VarInts;
 import org.cloudburstmc.nbt.util.stream.LittleEndianDataOutputStream;
 import org.cloudburstmc.protocol.bedrock.BedrockSession;
 import org.cloudburstmc.protocol.bedrock.data.SubChunkData;
+import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
+import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
@@ -271,19 +273,38 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
                         writeVarInt(newSubChunkData, fixedBlockRID);
                     }
                 }
+            }
 
-                // Dump the rest of the packet (block entities)
-                // TODO: This code legit sucks
-                /*for (int i=0; i < subChunkData.readableBytes(); i++) {
-                    newSubChunkData.ensureWritable(1);
-                    newSubChunkData.writeByte(subChunkData.readByte());
-                }*/
+            // Dump the rest of the packet (block entities)
+            // TODO: This code legit sucks
+            while (subChunkData.readableBytes() > 0) {
+                newSubChunkData.ensureWritable(1);
+                newSubChunkData.writeByte(subChunkData.readByte());
             }
 
             subChunks.get(subChunkIndex).setData(newSubChunkData); // Is this needed?
         }
 
         packet.setSubChunks(subChunks); // Is this needed?
+
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(UpdateBlockPacket packet) {
+        BlockDefinition definition = packet.getDefinition();
+
+        BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(definition.getRuntimeId(), 0), null);
+        packet.setDefinition(newBlockDefinition);
+
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(UpdateSubChunkBlocksPacket packet) {
+        packet.getStandardBlocks();
+
+        UpdateSubChunkBlocksPacket packetw = new UpdateSubChunkBlocksPacket();
 
         return PacketSignal.UNHANDLED;
     }
@@ -333,6 +354,8 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
         proxy.saveJson("runtime_item_states.json", itemData);
 
         packet.setBlockRegistryChecksum(-7810975316988886033L);
+        packet.setClientSideGenerationEnabled(false); // Broken in ProxyPass
+        packet.setServerEngine("1.20.31");
 
         return PacketSignal.UNHANDLED;
     }
