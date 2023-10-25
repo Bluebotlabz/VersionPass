@@ -30,6 +30,7 @@ import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.BedrockPong;
 import org.cloudburstmc.protocol.bedrock.codec.BedrockCodec;
 import org.cloudburstmc.protocol.bedrock.codec.v622.Bedrock_v622;
+import org.cloudburstmc.protocol.bedrock.codec.v618.Bedrock_v618;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.netty.initializer.BedrockChannelInitializer;
 import org.cloudburstmc.protocol.common.DefinitionRegistry;
@@ -37,6 +38,7 @@ import org.cloudburstmc.proxypass.network.bedrock.session.Account;
 import org.cloudburstmc.proxypass.network.bedrock.session.ProxyClientSession;
 import org.cloudburstmc.proxypass.network.bedrock.session.ProxyServerSession;
 import org.cloudburstmc.proxypass.network.bedrock.session.UpstreamPacketHandler;
+import org.cloudburstmc.proxypass.network.bedrock.util.BlockPaletteUtils;
 import org.cloudburstmc.proxypass.network.bedrock.util.NbtBlockDefinitionRegistry;
 import org.cloudburstmc.proxypass.network.bedrock.util.UnknownBlockDefinitionRegistry;
 
@@ -62,15 +64,21 @@ import java.util.function.Consumer;
 public class ProxyPass {
     public static final ObjectMapper JSON_MAPPER;
     public static final YAMLMapper YAML_MAPPER = (YAMLMapper) new YAMLMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
-    public static final String MINECRAFT_VERSION;
-    public static final BedrockCodec CODEC = Bedrock_v622.CODEC;
-    public static final int PROTOCOL_VERSION = CODEC.getProtocolVersion();
+    public static final String SERVER_MINECRAFT_VERSION;
+    public static final String CLIENT_MINECRAFT_VERSION;
+
+    // HEHE THIS CANT GO WRONG
+    public static final BedrockCodec SERVER_CODEC = Bedrock_v618.CODEC; // Hosting a v618 server
+    public static final BedrockCodec CLIENT_CODEC = Bedrock_v622.CODEC; // Using a v622 client
+
+    public static final int SERVER_PROTOCOL_VERSION = SERVER_CODEC.getProtocolVersion();
+    public static final int CLIENT_PROTOCOL_VERSION = CLIENT_CODEC.getProtocolVersion();
     private static final BedrockPong ADVERTISEMENT = new BedrockPong()
             .edition("MCPE")
             .gameType("Survival")
-            .version(ProxyPass.MINECRAFT_VERSION)
-            .protocolVersion(ProxyPass.PROTOCOL_VERSION)
-            .motd("ProxyPass")
+            .version(ProxyPass.SERVER_MINECRAFT_VERSION)
+            .protocolVersion(ProxyPass.SERVER_PROTOCOL_VERSION)
+            .motd("VersionPass")
             .playerCount(0)
             .maximumPlayerCount(20)
             .subMotd("https://github.com/CloudburstMC/ProxyPass")
@@ -97,7 +105,8 @@ public class ProxyPass {
         PRETTY_PRINTER.indentObjectsWith(indenter);
 
         JSON_MAPPER = new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).setDefaultPrettyPrinter(PRETTY_PRINTER);
-        MINECRAFT_VERSION = CODEC.getMinecraftVersion();
+        SERVER_MINECRAFT_VERSION = SERVER_CODEC.getMinecraftVersion();
+        CLIENT_MINECRAFT_VERSION = CLIENT_CODEC.getMinecraftVersion();
     }
 
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -116,7 +125,15 @@ public class ProxyPass {
     private Path baseDir;
     private Path sessionsDir;
     private Path dataDir;
-    private DefinitionRegistry<BlockDefinition> blockDefinitions;
+    private DefinitionRegistry<BlockDefinition> serverBlockDefinitions;
+    private DefinitionRegistry<BlockDefinition> clientBlockDefinitions;
+
+    Map<Integer, Integer> serverBlockPaletteMap;
+    Map<Integer, Integer> clientBlockPaletteMap;
+
+    Map<Integer, Integer> RIDReplacementsClientToServer = new HashMap<>();
+    Map<Integer, Integer> RIDReplacementsServerToClient = new HashMap<>();
+
     private static Account account;
 
     public static void main(String[] args) {
@@ -169,16 +186,47 @@ public class ProxyPass {
             }
         }
 
-        // Load block palette, if it exists
-        Object object = this.loadGzipNBT("block_palette.nbt");
+        // Load block palette, if it exists (taken from GeyserMC)
+        Object serverBlockDefinitionsNBT = this.loadGzipNBT("block_palette.1_20_40.nbt");
+        Object clientBlockDefinitionsNBT = this.loadGzipNBT("block_palette.1_20_30.nbt");
 
-        if (object instanceof NbtMap map) {
-            this.blockDefinitions = new NbtBlockDefinitionRegistry(map.getList("blocks", NbtType.COMPOUND));
+        this.serverBlockPaletteMap = new HashMap<>();
+        this.clientBlockPaletteMap = new HashMap<>();
+
+        if (serverBlockDefinitionsNBT instanceof NbtMap serverNBTMap) {
+            List<NbtMap> serverBlockDefinitions = serverNBTMap.getList("blocks", NbtType.COMPOUND);
+            for (int i=0; i < serverBlockDefinitions.size(); i++) {
+                this.serverBlockPaletteMap.put(BlockPaletteUtils.createHash(serverBlockDefinitions.get(i)), i);
+            }
+
+            this.serverBlockDefinitions = new UnknownBlockDefinitionRegistry();
         } else {
-            this.blockDefinitions = new UnknownBlockDefinitionRegistry();
-            log.warn(
-                    "Failed to load block palette. Blocks will appear as runtime IDs in packet traces and creative_content.json!");
+            log.error(
+                    "Failed to load server block palette. Blocks will appear as runtime IDs in packet traces and creative_content.json!");
+            throw new RuntimeException();
         }
+
+        if (clientBlockDefinitionsNBT instanceof NbtMap clientNBTMap) {
+            List<NbtMap> clientBlockDefinitions = clientNBTMap.getList("blocks", NbtType.COMPOUND);
+            for (int i=0; i < clientBlockDefinitions.size(); i++) {
+                this.clientBlockPaletteMap.put(BlockPaletteUtils.createHash(clientBlockDefinitions.get(i)), i);
+            }
+
+            this.serverBlockDefinitions = new UnknownBlockDefinitionRegistry();
+        } else {
+            log.error(
+                    "Failed to load client block palette. Blocks will appear as runtime IDs in packet traces and creative_content.json!");
+            throw new RuntimeException();
+        }
+
+        // Compute the RID replacements
+        for (Map.Entry<Integer, Integer> blockEntry : this.serverBlockPaletteMap.entrySet()) {
+            this.RIDReplacementsServerToClient.put( blockEntry.getValue(), this.clientBlockPaletteMap.getOrDefault(blockEntry.getKey(), 0 ) );
+        }
+        for (Map.Entry<Integer, Integer> blockEntry : this.clientBlockPaletteMap.entrySet()) {
+            this.RIDReplacementsClientToServer.put( blockEntry.getValue(), this.serverBlockPaletteMap.getOrDefault(blockEntry.getKey(), 0 ) );
+        }
+        
 
         log.info("Loading server...");
         ADVERTISEMENT.ipv4Port(this.proxyAddress.getPort())
@@ -211,7 +259,7 @@ public class ProxyPass {
         Channel channel = new Bootstrap()
                 .group(this.eventLoopGroup)
                 .channelFactory(RakChannelFactory.client(NioDatagramChannel.class))
-                .option(RakChannelOption.RAK_PROTOCOL_VERSION, ProxyPass.CODEC.getRaknetProtocolVersion())
+                .option(RakChannelOption.RAK_PROTOCOL_VERSION, ProxyPass.CLIENT_CODEC.getRaknetProtocolVersion())
                 .handler(new BedrockChannelInitializer<ProxyClientSession>() {
 
                     @Override

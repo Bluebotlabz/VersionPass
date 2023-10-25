@@ -36,7 +36,7 @@ public class ProxyServerSession extends BedrockServerSession implements ProxySes
         }
 
         if (proxyPass.getConfiguration().isPacketTesting()) {
-            TestUtils.testPacket(this, wrapper);
+            TestUtils.testPacket(this, ProxyPass.SERVER_CODEC, wrapper);
         }
 
         if (this.packetHandler == null) {

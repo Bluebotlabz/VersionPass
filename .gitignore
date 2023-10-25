@@ -233,3 +233,7 @@ packet-logs/
 packet-logs/*
 data/
 sessions/
+
+/.bloop/
+/.metals/
+auth.json

@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
+import org.cloudburstmc.protocol.bedrock.packet.ClientCacheStatusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkSettingsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayStatusPacket;
@@ -51,12 +52,18 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
     }
 
     @Override
+    public PacketSignal handle(ClientCacheStatusPacket packet) {
+        packet.setSupported(false); // HEHE BANDWIDTH GO BRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
     public PacketSignal handle(RequestNetworkSettingsPacket packet) {
         int protocolVersion = packet.getProtocolVersion();
 
-        if (protocolVersion != ProxyPass.PROTOCOL_VERSION) {
+        if (protocolVersion != ProxyPass.SERVER_PROTOCOL_VERSION) {
             PlayStatusPacket status = new PlayStatusPacket();
-            if (protocolVersion > ProxyPass.PROTOCOL_VERSION) {
+            if (protocolVersion > ProxyPass.SERVER_PROTOCOL_VERSION) {
                 status.setStatus(PlayStatusPacket.Status.LOGIN_FAILED_SERVER_OLD);
             } else {
                 status.setStatus(PlayStatusPacket.Status.LOGIN_FAILED_CLIENT_OLD);
@@ -65,7 +72,7 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
             session.sendPacketImmediately(status);
             return PacketSignal.HANDLED;
         }
-        session.setCodec(ProxyPass.CODEC);
+        session.setCodec(ProxyPass.SERVER_CODEC);
 
         NetworkSettingsPacket networkSettingsPacket = new NetworkSettingsPacket();
         networkSettingsPacket.setCompressionThreshold(0);
@@ -122,7 +129,7 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
     private void initializeOfflineProxySession() {
         log.debug("Initializing proxy session");
         this.proxy.newClient(this.proxy.getTargetAddress(), downstream -> {
-            downstream.setCodec(ProxyPass.CODEC);
+            downstream.setCodec(ProxyPass.CLIENT_CODEC);
             downstream.setSendSession(this.session);
             this.session.setSendSession(downstream);
 
@@ -154,13 +161,13 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
             LoginPacket login = new LoginPacket();
             login.getChain().addAll(chainData);
             login.setExtra(skinData);
-            login.setProtocolVersion(ProxyPass.PROTOCOL_VERSION);
+            login.setProtocolVersion(ProxyPass.CLIENT_PROTOCOL_VERSION);
 
             downstream.setPacketHandler(new DownstreamInitialPacketHandler(downstream, proxySession, this.proxy, login));
             downstream.setLogging(true);
 
             RequestNetworkSettingsPacket packet = new RequestNetworkSettingsPacket();
-            packet.setProtocolVersion(ProxyPass.PROTOCOL_VERSION);
+            packet.setProtocolVersion(ProxyPass.CLIENT_PROTOCOL_VERSION);
             downstream.sendPacketImmediately(packet);
 
             //SkinUtils.saveSkin(proxySession, this.skinData);
@@ -181,7 +188,7 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
                 log.error("Failed to get login chain", e);
             }
 
-            downstream.setCodec(ProxyPass.CODEC);
+            downstream.setCodec(ProxyPass.CLIENT_CODEC);
             downstream.setSendSession(this.session);
             this.session.setSendSession(downstream);
 
@@ -207,13 +214,13 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
             LoginPacket login = new LoginPacket();
             login.getChain().addAll(onlineLoginChain);
             login.setExtra(skinData);
-            login.setProtocolVersion(ProxyPass.PROTOCOL_VERSION);
+            login.setProtocolVersion(ProxyPass.CLIENT_PROTOCOL_VERSION);
 
             downstream.setPacketHandler(new DownstreamInitialPacketHandler(downstream, proxySession, this.proxy, login));
             downstream.setLogging(true);
 
             RequestNetworkSettingsPacket packet = new RequestNetworkSettingsPacket();
-            packet.setProtocolVersion(ProxyPass.PROTOCOL_VERSION);
+            packet.setProtocolVersion(ProxyPass.CLIENT_PROTOCOL_VERSION);
             downstream.sendPacketImmediately(packet);
 
             //SkinUtils.saveSkin(proxySession, this.skinData);

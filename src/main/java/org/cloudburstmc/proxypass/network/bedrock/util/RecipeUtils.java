@@ -118,7 +118,8 @@ public class RecipeUtils {
             ));
         }
 
-        Recipes recipes = new Recipes(ProxyPass.CODEC.getProtocolVersion(), entries, potions, containers);
+        // TODO: does this work?
+        Recipes recipes = new Recipes(ProxyPass.CLIENT_CODEC.getProtocolVersion(), entries, potions, containers);
 
         proxy.saveJson("recipes.json", recipes);
     }
