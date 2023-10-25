@@ -125,8 +125,8 @@ public class ProxyPass {
     private Path baseDir;
     private Path sessionsDir;
     private Path dataDir;
-    private DefinitionRegistry<BlockDefinition> serverBlockDefinitions;
-    private DefinitionRegistry<BlockDefinition> clientBlockDefinitions;
+    private DefinitionRegistry<BlockDefinition> serverBlockDefinitions; // Block definitions FROM the server (v622)
+    private DefinitionRegistry<BlockDefinition> clientBlockDefinitions; // Block definitions FROM the client (v618)
 
     Map<Integer, Integer> serverBlockPaletteMap;
     Map<Integer, Integer> clientBlockPaletteMap;
@@ -193,10 +193,63 @@ public class ProxyPass {
         this.serverBlockPaletteMap = new HashMap<>();
         this.clientBlockPaletteMap = new HashMap<>();
 
+        /*
+         * CardinalFix basically fakes this without actually fixing everything
+         * Since we have two seperate replacement maps...
+         * 
+         * serverBlockDefinitions is changed so that it uses the client's expected version (facing_direction)
+         * clientBlockDefinitions is changed so that it uses the server's expected version (cardinal_direction)
+         * 
+         * This is because it will already contain the *other* one
+         * This also means multiple hashes will link to the same ID, this is fine
+         */
+        List<String> cardinalFix = new ArrayList<>();
+        cardinalFix.add("minecraft:chest");
+        cardinalFix.add("minecraft:trapped_chest");
+        cardinalFix.add("minecraft:ender_chest");
+        cardinalFix.add("minecraft:stonecutter_block");
+
+        String[] facing_to_cardinal_directions = {
+            "unused", "unused", "north", "south", "west", "east"
+        };
+        
+
         if (serverBlockDefinitionsNBT instanceof NbtMap serverNBTMap) {
             List<NbtMap> serverBlockDefinitions = serverNBTMap.getList("blocks", NbtType.COMPOUND);
             for (int i=0; i < serverBlockDefinitions.size(); i++) {
-                this.serverBlockPaletteMap.put(BlockPaletteUtils.createHash(serverBlockDefinitions.get(i)), i);
+                // Server Block Definitions
+                NbtMap serverBlockDefinition =  serverBlockDefinitions.get(i);
+                this.serverBlockPaletteMap.put(BlockPaletteUtils.createHash(serverBlockDefinition), i);
+
+                if (cardinalFix.contains(serverBlockDefinition.getString("name"))) { // Replace facing_direction with cardinal_direction
+                    String cardinalDirection = serverBlockDefinition.getCompound("states").getString("minecraft:cardinal_direction");
+                    int facing_direction=0;
+
+                    switch (cardinalDirection) {
+                        case "north":
+                            facing_direction=2;
+                            break;
+                        case "south":
+                            facing_direction=3;
+                            break;
+                        case "west":
+                            facing_direction=4;
+                            break;
+                        case "east":
+                            facing_direction=5;
+                            break;
+                    }
+
+                    NbtMapBuilder fixedStatesBuilder = serverBlockDefinition.getCompound("states").toBuilder();
+                    fixedStatesBuilder.remove("minecraft:cardinal_direction");
+                    fixedStatesBuilder.putInt("facing_direction", facing_direction);
+                    
+                    NbtMapBuilder fixedServerBlockDefinitionBuilder = serverBlockDefinition.toBuilder();
+                    fixedServerBlockDefinitionBuilder.remove("states");
+                    fixedServerBlockDefinitionBuilder.putCompound("states", fixedStatesBuilder.build());
+
+                    this.serverBlockPaletteMap.put(BlockPaletteUtils.createHash(fixedServerBlockDefinitionBuilder.build()), i); // Add this new fixed cardinal direction one
+                }
             }
 
             this.serverBlockDefinitions = new UnknownBlockDefinitionRegistry();
@@ -209,10 +262,27 @@ public class ProxyPass {
         if (clientBlockDefinitionsNBT instanceof NbtMap clientNBTMap) {
             List<NbtMap> clientBlockDefinitions = clientNBTMap.getList("blocks", NbtType.COMPOUND);
             for (int i=0; i < clientBlockDefinitions.size(); i++) {
-                this.clientBlockPaletteMap.put(BlockPaletteUtils.createHash(clientBlockDefinitions.get(i)), i);
+                // Server Block Definitions
+                NbtMap clientBlockDefinition =  clientBlockDefinitions.get(i);
+                this.clientBlockPaletteMap.put(BlockPaletteUtils.createHash(clientBlockDefinition), i);
+
+                if (cardinalFix.contains(clientBlockDefinition.getString("name"))) { // Replace cardinal_direction with facing_direction
+                    int facingDirection = clientBlockDefinition.getCompound("states").getInt("facing_direction");
+                    String cardinal_direction = facing_to_cardinal_directions[facingDirection];
+
+                    NbtMapBuilder fixedStatesBuilder = clientBlockDefinition.getCompound("states").toBuilder();
+                    fixedStatesBuilder.remove("facing_direction");
+                    fixedStatesBuilder.putString("minecraft:cardinal_direction", cardinal_direction);
+                    
+                    NbtMapBuilder fixedClientBlockDefinitionBuilder = clientBlockDefinition.toBuilder();
+                    fixedClientBlockDefinitionBuilder.remove("states");
+                    fixedClientBlockDefinitionBuilder.putCompound("states", fixedStatesBuilder.build());
+
+                    this.clientBlockPaletteMap.put(BlockPaletteUtils.createHash(fixedClientBlockDefinitionBuilder.build()), i); // Add this new fixed cardinal direction one
+                }
             }
 
-            this.serverBlockDefinitions = new UnknownBlockDefinitionRegistry();
+            this.clientBlockDefinitions = new UnknownBlockDefinitionRegistry();
         } else {
             log.error(
                     "Failed to load client block palette. Blocks will appear as runtime IDs in packet traces and creative_content.json!");
