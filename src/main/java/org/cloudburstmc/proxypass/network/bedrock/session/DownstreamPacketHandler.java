@@ -4,25 +4,21 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.extern.log4j.Log4j2;
 
-import org.cloudburstmc.nbt.NBTInputStream;
 import org.cloudburstmc.nbt.NBTOutputStream;
 import org.cloudburstmc.nbt.NbtMap;
-import org.cloudburstmc.nbt.NbtUtils;
-import org.cloudburstmc.nbt.util.VarInts;
 import org.cloudburstmc.nbt.util.stream.LittleEndianDataOutputStream;
 import org.cloudburstmc.protocol.bedrock.BedrockSession;
 import org.cloudburstmc.protocol.bedrock.data.BlockChangeEntry;
 import org.cloudburstmc.protocol.bedrock.data.SubChunkData;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
-import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleItemDefinition;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ContainerId;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.packet.*;
@@ -31,13 +27,12 @@ import org.cloudburstmc.protocol.common.SimpleDefinitionRegistry;
 import org.cloudburstmc.proxypass.ProxyPass;
 import org.cloudburstmc.proxypass.network.bedrock.util.NbtBlockDefinitionRegistry;
 import org.cloudburstmc.proxypass.network.bedrock.util.RecipeUtils;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import javax.annotation.OverridingMethodsMustInvokeSuper;
 
 @Log4j2
 @RequiredArgsConstructor
@@ -314,8 +309,32 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
     public PacketSignal handle(UpdateBlockPacket packet) {
         BlockDefinition definition = packet.getDefinition();
 
-        BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(definition.getRuntimeId(), 0), null);
+        BlockDefinition newBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(definition.getRuntimeId(), 0));
         packet.setDefinition(newBlockDefinition);
+
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(UpdateBlockSyncedPacket packet) {
+        BlockDefinition definition = packet.getDefinition();
+
+        BlockDefinition newBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(definition.getRuntimeId(), 0));
+        packet.setDefinition(newBlockDefinition);
+
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(AddEntityPacket packet) {
+        EntityDataMap entityMetadata = packet.getMetadata();
+        
+        if (entityMetadata.containsKey(EntityDataTypes.BLOCK) && entityMetadata.get(EntityDataTypes.BLOCK) != null) {
+            BlockDefinition oldBlockDefinition = (BlockDefinition) entityMetadata.get(EntityDataTypes.BLOCK);
+
+            BlockDefinition newBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(oldBlockDefinition.getRuntimeId(), 0));
+            entityMetadata.put(EntityDataTypes.BLOCK, newBlockDefinition);
+        }
 
         return PacketSignal.UNHANDLED;
     }
@@ -331,7 +350,7 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
             BlockChangeEntry blockChangeEntry = standardBlocks.get(i);
 
             // Create new block definition
-            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0), null);
+            BlockDefinition newBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0));
 
             // Create new change entry
             BlockChangeEntry newBlockChangeEntry = new BlockChangeEntry(blockChangeEntry.getPosition(), newBlockDefinition, blockChangeEntry.getUpdateFlags(), blockChangeEntry.getMessageEntityId(), blockChangeEntry.getMessageType());
@@ -343,7 +362,7 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
             BlockChangeEntry blockChangeEntry = extraBlocks.get(i);
 
             // Create new block definition
-            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0), null);
+            BlockDefinition newBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0));
 
             // Create new change entry
             BlockChangeEntry newBlockChangeEntry = new BlockChangeEntry(blockChangeEntry.getPosition(), newBlockDefinition, blockChangeEntry.getUpdateFlags(), blockChangeEntry.getMessageEntityId(), blockChangeEntry.getMessageType());
@@ -462,7 +481,19 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
     public PacketSignal handle(InventoryContentPacket packet) {
         if (packet.getContainerId() == ContainerId.CREATIVE) {
             dumpCreativeItems(packet.getContents().toArray(new ItemData[0]));
+            return PacketSignal.UNHANDLED;
         }
+
+        // TODO
+        /*
+        List<ItemData> inventoryContents = packet.getContents();
+
+        for (int i=0; i < inventoryContents.size(); i++) {
+            ItemData item = inventoryContents.get(i);
+
+            BlockDefinition fixedBlockDefinition = this.proxy.getClientBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsServerToClient().getOrDefault(item.getBlockDefinition().getRuntimeId(), 0));
+        }*/
+
         return PacketSignal.UNHANDLED;
     }
 

@@ -8,7 +8,6 @@ import java.util.Map;
 
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
-import org.cloudburstmc.protocol.bedrock.data.definitions.SimpleBlockDefinition;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
 import org.cloudburstmc.protocol.bedrock.packet.ClientCacheStatusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
@@ -67,7 +66,7 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
         BlockDefinition blockDefinition = packet.getBlockDefinition();
 
         if (blockDefinition != null) {
-            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsClientToServer().getOrDefault(blockDefinition.getRuntimeId(), 0), null);
+            BlockDefinition newBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(blockDefinition.getRuntimeId(), 0));
             packet.setBlockDefinition(newBlockDefinition);
         }
 
