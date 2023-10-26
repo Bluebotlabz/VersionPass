@@ -295,6 +295,8 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
                     newSubChunkData.ensureWritable(1);
                     newSubChunkData.writeByte(subChunkData.readByte());
                 }
+            } else {
+                System.out.println("Unhandled subchunk version: " + Integer.toString(subChunkVersion));
             }
 
             subChunks.get(subChunkIndex).setData(newSubChunkData); // Is this needed?
