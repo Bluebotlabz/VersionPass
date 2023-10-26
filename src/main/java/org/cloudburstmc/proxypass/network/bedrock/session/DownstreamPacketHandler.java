@@ -13,6 +13,7 @@ import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.util.VarInts;
 import org.cloudburstmc.nbt.util.stream.LittleEndianDataOutputStream;
 import org.cloudburstmc.protocol.bedrock.BedrockSession;
+import org.cloudburstmc.protocol.bedrock.data.BlockChangeEntry;
 import org.cloudburstmc.protocol.bedrock.data.SubChunkData;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.definitions.ItemDefinition;
@@ -304,7 +305,33 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
     public PacketSignal handle(UpdateSubChunkBlocksPacket packet) {
         packet.getStandardBlocks();
 
-        UpdateSubChunkBlocksPacket packetw = new UpdateSubChunkBlocksPacket();
+        List<BlockChangeEntry> standardBlocks = packet.getStandardBlocks();
+        List<BlockChangeEntry> extraBlocks = packet.getExtraBlocks();
+
+        for (int i=0; i < standardBlocks.size(); i++) {
+            BlockChangeEntry blockChangeEntry = standardBlocks.get(i);
+
+            // Create new block definition
+            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0), null);
+
+            // Create new change entry
+            BlockChangeEntry newBlockChangeEntry = new BlockChangeEntry(blockChangeEntry.getPosition(), newBlockDefinition, blockChangeEntry.getUpdateFlags(), blockChangeEntry.getMessageEntityId(), blockChangeEntry.getMessageType());
+
+            standardBlocks.set(i, newBlockChangeEntry);
+        }
+
+        for (int i=0; i < extraBlocks.size(); i++) {
+            BlockChangeEntry blockChangeEntry = extraBlocks.get(i);
+
+            // Create new block definition
+            BlockDefinition newBlockDefinition = new SimpleBlockDefinition(null, this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockChangeEntry.getDefinition().getRuntimeId(), 0), null);
+
+            // Create new change entry
+            BlockChangeEntry newBlockChangeEntry = new BlockChangeEntry(blockChangeEntry.getPosition(), newBlockDefinition, blockChangeEntry.getUpdateFlags(), blockChangeEntry.getMessageEntityId(), blockChangeEntry.getMessageType());
+
+            extraBlocks.set(i, newBlockChangeEntry);
+        }
+
 
         return PacketSignal.UNHANDLED;
     }
