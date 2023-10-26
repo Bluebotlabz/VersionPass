@@ -21,12 +21,12 @@ If you wish to run the project from source, run `./gradlew run` in the project r
 - [x] Placing blocks
 - [x] Breaking blocks
 - [x] Interacting with blocks
-- [ ] Interacting with entities
+- [ ] Interacting with entities `untested`
 - [x] PVE
-- [ ] PVP
+- [ ] PVP `untested`
 - [x] Movement
 - [x] Joining world
-- [ ] Viewing world (NEEDS SUBCHUNK v0 SUPPORT, OTHERWISE WORKS)
+- [x] Viewing world `NOTE: Only supports Subchunks v0, v2, v3, v8 and v9`
 - [ ] Support for older versions
 - [ ] Block RID unhashing (needed to support older versions)
 
