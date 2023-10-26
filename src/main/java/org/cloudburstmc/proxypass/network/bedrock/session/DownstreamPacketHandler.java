@@ -4,12 +4,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.Unpooled;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.extern.log4j.Log4j2;
+
+import org.cloudburstmc.nbt.NBTInputStream;
 import org.cloudburstmc.nbt.NBTOutputStream;
 import org.cloudburstmc.nbt.NbtMap;
+import org.cloudburstmc.nbt.NbtUtils;
 import org.cloudburstmc.nbt.util.VarInts;
 import org.cloudburstmc.nbt.util.stream.LittleEndianDataOutputStream;
 import org.cloudburstmc.protocol.bedrock.BedrockSession;
@@ -277,7 +281,9 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
                     newSubChunkData.ensureWritable(1);
                     newSubChunkData.writeByte(subChunkData.readByte());
                 }
-            } else if (subChunkVersion == 0 || subChunkVersion == 2 || subChunkVersion == 3) {
+            } else if (subChunkVersion == 1) {
+                System.out.println("ERRRRRR SUBCHNK V1 DETECTED OH NOOOOOOOOOOOOOOOOO");
+            } else if (subChunkVersion >= 0 && subChunkVersion <= 7) {
                 for (int i=0; i < 4096; i++) { // Read subchunk data
                     short blockRID = subChunkData.readUnsignedByte();
 
