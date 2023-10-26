@@ -217,70 +217,83 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
             newSubChunkData.ensureWritable(1);
             newSubChunkData.writeByte(subChunkVersion);
 
-            if (subChunkVersion != 9 && subChunkVersion != 8) {
-                return PacketSignal.UNHANDLED;
-            }
-
-            assert subChunkVersion == 9 || subChunkVersion == 8; // Yeah...
-
-            // First byte is "storages count"
-            int storagesCount = subChunkData.readUnsignedByte();
-            newSubChunkData.ensureWritable(1);
-            newSubChunkData.writeByte(storagesCount);
-
-            // Potential junk second byte if v9
-            if (subChunkVersion == 9) {
+                if (subChunkVersion == 9 || subChunkVersion == 8) {
+                // First byte is "storages count"
+                int storagesCount = subChunkData.readUnsignedByte();
                 newSubChunkData.ensureWritable(1);
-                newSubChunkData.writeByte(subChunkData.readUnsignedByte()); // Skip the "layer height" field?
-            }
+                newSubChunkData.writeByte(storagesCount);
 
-            for (int y=0; y < storagesCount; y++) {
-                // Read palette
-                int paletteHeader = subChunkData.readUnsignedByte();
+                // Potential junk second byte if v9
+                if (subChunkVersion == 9) {
+                    newSubChunkData.ensureWritable(1);
+                    newSubChunkData.writeByte(subChunkData.readUnsignedByte()); // Skip the "layer height" field?
+                }
 
-                newSubChunkData.ensureWritable(1);
-                newSubChunkData.writeByte(paletteHeader);
+                for (int y=0; y < storagesCount; y++) {
+                    // Read palette
+                    int paletteHeader = subChunkData.readUnsignedByte();
 
-                int bitsPerBlock = paletteHeader >> 1;
-                boolean isPersistant = (paletteHeader & 0x01) == 0; // This should always be false or bad stuff will happen
-                assert !isPersistant;
+                    newSubChunkData.ensureWritable(1);
+                    newSubChunkData.writeByte(paletteHeader);
 
-                if (bitsPerBlock != 0) {
-                    int blocksPerWord = Integer.SIZE / bitsPerBlock;
-                    int wordsCount = (4096 + blocksPerWord - 1) / blocksPerWord;
-                    int[] words = new int[wordsCount];
+                    int bitsPerBlock = paletteHeader >> 1;
+                    boolean isPersistant = (paletteHeader & 0x01) == 0; // This should always be false or bad stuff will happen
+                    assert !isPersistant;
 
-                    // Read words
-                    for (int i=0; i < wordsCount; i++) {
-                        int word = subChunkData.readIntLE();
+                    if (bitsPerBlock != 0) {
+                        int blocksPerWord = Integer.SIZE / bitsPerBlock;
+                        int wordsCount = (4096 + blocksPerWord - 1) / blocksPerWord;
+                        int[] words = new int[wordsCount];
 
-                        newSubChunkData.ensureWritable(4);
-                        newSubChunkData.writeIntLE(word);
+                        // Read words
+                        for (int i=0; i < wordsCount; i++) {
+                            int word = subChunkData.readIntLE();
 
-                        words[i] = word;
-                    }
-                    int paletteSize = readVarInt(subChunkData); // What?
-                    writeVarInt(newSubChunkData, paletteSize);
+                            newSubChunkData.ensureWritable(4);
+                            newSubChunkData.writeIntLE(word);
 
-                    // Now read the palette
-                    List<Integer> blockPalette = new ArrayList<>();
-                    for (int i=0; i < paletteSize; i++) {
-                        int blockRID = readVarInt(subChunkData);
-                        blockPalette.add(blockRID);
+                            words[i] = word;
+                        }
+                        int paletteSize = readVarInt(subChunkData); // What?
+                        writeVarInt(newSubChunkData, paletteSize);
 
-                        int fixedBlockRID = this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockRID, 0);
+                        // Now read the palette
+                        List<Integer> blockPalette = new ArrayList<>();
+                        for (int i=0; i < paletteSize; i++) {
+                            int blockRID = readVarInt(subChunkData);
+                            blockPalette.add(blockRID);
 
-                        // Get proper blockPalette
-                        writeVarInt(newSubChunkData, fixedBlockRID);
+                            int fixedBlockRID = this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockRID, 0);
+
+                            // Get proper blockPalette
+                            writeVarInt(newSubChunkData, fixedBlockRID);
+                        }
                     }
                 }
-            }
 
-            // Dump the rest of the packet (block entities)
-            // TODO: This code legit sucks
-            while (subChunkData.readableBytes() > 0) {
-                newSubChunkData.ensureWritable(1);
-                newSubChunkData.writeByte(subChunkData.readByte());
+                // Dump the rest of the packet (block entities)
+                // TODO: This code legit sucks
+                while (subChunkData.readableBytes() > 0) {
+                    newSubChunkData.ensureWritable(1);
+                    newSubChunkData.writeByte(subChunkData.readByte());
+                }
+            } else if (subChunkVersion == 0 || subChunkVersion == 2 || subChunkVersion == 3) {
+                for (int i=0; i < 4096; i++) { // Read subchunk data
+                    short blockRID = subChunkData.readUnsignedByte();
+
+                    int fixedBlockRID = this.proxy.getRIDReplacementsServerToClient().getOrDefault(blockRID, 0);
+
+                    // Get proper blockPalette
+                    newSubChunkData.ensureWritable(1);
+                    newSubChunkData.writeByte(fixedBlockRID);
+                }
+
+                // Dump the rest of the packet (block entities)
+                // TODO: This code legit sucks
+                while (subChunkData.readableBytes() > 0) {
+                    newSubChunkData.ensureWritable(1);
+                    newSubChunkData.writeByte(subChunkData.readByte());
+                }
             }
 
             subChunks.get(subChunkIndex).setData(newSubChunkData); // Is this needed?
