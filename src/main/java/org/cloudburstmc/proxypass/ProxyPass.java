@@ -14,6 +14,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.util.ResourceLeakDetector;
+import io.netty.util.internal.ThreadLocalRandom;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.log4j.Log4j2;
@@ -326,24 +327,28 @@ public class ProxyPass {
     }
 
     public void newClient(InetSocketAddress socketAddress, Consumer<ProxyClientSession> sessionConsumer) {
+        // TODO: Why can only one instance join a server?
         Channel channel = new Bootstrap()
-                .group(this.eventLoopGroup)
                 .channelFactory(RakChannelFactory.client(NioDatagramChannel.class))
+                .group(this.eventLoopGroup)
                 .option(RakChannelOption.RAK_PROTOCOL_VERSION, ProxyPass.CLIENT_CODEC.getRaknetProtocolVersion())
+                .option(RakChannelOption.RAK_GUID, ThreadLocalRandom.current().nextLong())
                 .handler(new BedrockChannelInitializer<ProxyClientSession>() {
 
                     @Override
                     protected ProxyClientSession createSession0(BedrockPeer peer, int subClientId) {
+                        log.debug("Creating new session");
                         return new ProxyClientSession(peer, subClientId, ProxyPass.this);
                     }
 
                     @Override
                     protected void initSession(ProxyClientSession session) {
+                        log.debug("Session init!");
                         sessionConsumer.accept(session);
                     }
                 })
                 .connect(socketAddress)
-                .awaitUninterruptibly()
+                .syncUninterruptibly()
                 .channel();
 
         this.clients.add(channel);
