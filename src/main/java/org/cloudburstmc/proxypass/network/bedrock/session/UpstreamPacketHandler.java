@@ -8,10 +8,14 @@ import java.util.Map;
 
 import org.cloudburstmc.protocol.bedrock.data.PacketCompressionAlgorithm;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
+import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData.Builder;
+import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryActionData;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
 import org.cloudburstmc.protocol.bedrock.packet.ClientCacheStatusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
+import org.cloudburstmc.protocol.bedrock.packet.MobEquipmentPacket;
 import org.cloudburstmc.protocol.bedrock.packet.NetworkSettingsPacket;
 import org.cloudburstmc.protocol.bedrock.packet.PlayStatusPacket;
 import org.cloudburstmc.protocol.bedrock.packet.RequestNetworkSettingsPacket;
@@ -63,12 +67,65 @@ public class UpstreamPacketHandler implements BedrockPacketHandler {
 
     @Override
     public PacketSignal handle(InventoryTransactionPacket packet) {
+        // Convert inventory transaction packet block definition
         BlockDefinition blockDefinition = packet.getBlockDefinition();
-
         if (blockDefinition != null) {
             BlockDefinition newBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(blockDefinition.getRuntimeId(), 0));
             packet.setBlockDefinition(newBlockDefinition);
         }
+
+        // Convert item in hand
+        ItemData packetItemInHand = packet.getItemInHand();
+        if (packetItemInHand != null && packetItemInHand.getBlockDefinition() != null) {
+            // TODO: Create general conversion functions to convert ItemData, etc
+            BlockDefinition newHandBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(packetItemInHand.getDefinition().getRuntimeId(), 0));
+            
+            Builder packetItemInHandBuilder = packetItemInHand.toBuilder();
+            packetItemInHandBuilder.blockDefinition(newHandBlockDefinition);
+
+            packet.setItemInHand(packetItemInHandBuilder.build());
+        }
+
+        // Convert inventoryActions
+        List<InventoryActionData> inventoryActions = packet.getActions();
+        for (int i=0; i < inventoryActions.size(); i++) {
+            InventoryActionData action = inventoryActions.get(i);
+
+            ItemData fromItem = action.getFromItem();
+            if (fromItem != null && fromItem.getBlockDefinition() != null) {
+                BlockDefinition newHandBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(fromItem.getDefinition().getRuntimeId(), 0));
+            
+                Builder fromItemBuilder = fromItem.toBuilder();
+                fromItemBuilder.blockDefinition(newHandBlockDefinition);
+                fromItem = fromItemBuilder.build();
+            }
+
+            ItemData toItem = action.getToItem();
+            if (toItem != null && toItem.getBlockDefinition() != null) {
+                BlockDefinition newHandBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(toItem.getDefinition().getRuntimeId(), 0));
+            
+                Builder toItemBuilder = toItem.toBuilder();
+                toItemBuilder.blockDefinition(newHandBlockDefinition);
+                toItem = toItemBuilder.build();
+            }
+
+
+            InventoryActionData newInventoryAction = new InventoryActionData(action.getSource(), action.getSlot(), fromItem, toItem);
+            inventoryActions.set(i, newInventoryAction);
+        }
+
+        return PacketSignal.UNHANDLED;
+    }
+
+    @Override
+    public PacketSignal handle(MobEquipmentPacket packet) {
+        ItemData packetItem = packet.getItem();
+        BlockDefinition newBlockDefinition = this.proxy.getServerBlockDefinitions().getDefinition(this.proxy.getRIDReplacementsClientToServer().getOrDefault(packetItem.getDefinition().getRuntimeId(), 0));
+        
+        Builder packetItemBuilder = packetItem.toBuilder();
+        packetItemBuilder.blockDefinition(newBlockDefinition);
+
+        packet.setItem(packetItemBuilder.build());
 
         return PacketSignal.UNHANDLED;
     }
