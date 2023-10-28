@@ -195,7 +195,7 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
             ByteBuf subChunkData = subChunks.get(subChunkIndex).getData();
 
             if (subChunkData.readableBytes() == 0) {
-                return PacketSignal.UNHANDLED;
+                continue; // Skip this subchunk if it has no data
             }
 
             ByteBuf newSubChunkData = Unpooled.directBuffer(subChunkData.capacity()); // do not judge
@@ -216,7 +216,7 @@ public class DownstreamPacketHandler implements BedrockPacketHandler {
             newSubChunkData.ensureWritable(1);
             newSubChunkData.writeByte(subChunkVersion);
 
-                if (subChunkVersion == 9 || subChunkVersion == 8) {
+            if (subChunkVersion == 9 || subChunkVersion == 8) {
                 // First byte is "storages count"
                 int storagesCount = subChunkData.readUnsignedByte();
                 newSubChunkData.ensureWritable(1);
